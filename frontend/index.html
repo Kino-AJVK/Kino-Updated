@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kino — Big Data Movie Recommendations</title>
+    <meta name="description" content="Discover movies based on your mood. Powered by PySpark and 20 million ratings.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body id="top">
+
+    <!-- ═══ NAVBAR ═══ -->
+    <nav class="navbar" id="navbar">
+        <div class="nav-left">
+            <a class="logo" href="#top" onclick="scrollToTop()">Kino<span>.</span></a>
+            <ul class="nav-links">
+                <li><a class="active" href="#top" data-target="#top">Home</a></li>
+                <li><a href="#mood-search" data-target="#mood-search">Search</a></li>
+                <li><a href="#trending" data-target="#trending">Trending</a></li>
+                <li><a href="#favorites" data-target="#favorites">Favorites</a></li>
+                <li><a href="#genres-section" data-target="#genres-section">Genres</a></li>
+            </ul>
+        </div>
+        <div class="nav-right">
+            <button class="search-toggle" onclick="toggleSearch()" aria-label="Search">🔍</button>
+            <div class="search-box-nav" id="nav-search">
+                <input type="text" id="nav-search-input" placeholder="Search movies..."
+                       onkeypress="if(event.key==='Enter') navSearch()">
+            </div>
+        </div>
+    </nav>
+
+    <!-- ═══ HERO BANNER ═══ -->
+    <section class="hero" id="hero">
+        <div class="hero-backdrop" id="hero-backdrop">
+            <img src="" alt="Featured movie backdrop" id="hero-img">
+        </div>
+        <div class="hero-gradient"></div>
+        <div class="hero-content">
+            <div class="hero-tag">🔥 FEATURED</div>
+            <h1 class="hero-title" id="hero-title">Loading...</h1>
+            <div class="hero-meta">
+                <span class="hero-rating" id="hero-rating"></span>
+                <span class="hero-year" id="hero-year"></span>
+                <span class="hero-genre" id="hero-genre"></span>
+            </div>
+            <p class="hero-overview" id="hero-overview"></p>
+            <div class="hero-buttons">
+                <button class="btn btn-primary" id="hero-details-btn">ℹ️ More Info</button>
+                <button class="btn btn-secondary" onclick="scrollTo('.mood-section')">🎭 Search by Mood</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══ MOOD SEARCH ═══ -->
+    <section class="mood-section" id="mood-search">
+        <div class="mood-card">
+            <h2>How are you feeling today?</h2>
+            <p class="subtitle">Describe your mood or what you're in the mood for</p>
+            <div class="mood-input-row">
+                <input type="text" id="mood-input"
+                       placeholder="e.g. 'I want something scary', 'feel like laughing', 'space adventure'...">
+                <button class="btn btn-primary" id="search-btn">Discover</button>
+            </div>
+            <div class="mood-chips" id="mood-chips">
+                <span class="mood-chip" data-mood="happy">😊 Happy</span>
+                <span class="mood-chip" data-mood="sad">😢 Sad</span>
+                <span class="mood-chip" data-mood="scary">😱 Scary</span>
+                <span class="mood-chip" data-mood="romantic">❤️ Romantic</span>
+                <span class="mood-chip" data-mood="action">💥 Action</span>
+                <span class="mood-chip" data-mood="mind">🧠 Mind-bending</span>
+                <span class="mood-chip" data-mood="funny">😂 Funny</span>
+                <span class="mood-chip" data-mood="mystery">🔍 Mystery</span>
+                <span class="mood-chip" data-mood="fantasy">🧙 Fantasy</span>
+                <span class="mood-chip" data-mood="space">🚀 Sci-Fi</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══ MOOD RESULTS ═══ -->
+    <section class="content-section" id="mood-results" style="display: none;">
+        <div class="section-header">
+            <h2 class="section-title" id="mood-results-title">Results</h2>
+        </div>
+        <div class="movie-grid" id="mood-results-grid"></div>
+    </section>
+
+    <!-- ═══ FAVORITES ═══ -->
+    <section class="content-section" id="favorites" style="display: none;">
+        <div class="section-header">
+            <h2 class="section-title">⭐ Favorites</h2>
+        </div>
+        <div class="movie-grid" id="favorites-grid"></div>
+    </section>
+
+    <!-- ═══ TRENDING NOW ═══ -->
+    <section class="content-section" id="trending">
+        <div class="section-header">
+            <h2 class="section-title">🔥 Trending Now</h2>
+        </div>
+        <div class="carousel-wrapper">
+            <button class="carousel-btn left" onclick="scrollCarousel('trending-track', -1)">‹</button>
+            <div class="carousel-track" id="trending-track">
+                <!-- Skeleton loaders -->
+                <div class="movie-card"><div class="poster-wrap"><div class="skeleton skeleton-card"></div></div></div>
+                <div class="movie-card"><div class="poster-wrap"><div class="skeleton skeleton-card"></div></div></div>
+                <div class="movie-card"><div class="poster-wrap"><div class="skeleton skeleton-card"></div></div></div>
+                <div class="movie-card"><div class="poster-wrap"><div class="skeleton skeleton-card"></div></div></div>
+                <div class="movie-card"><div class="poster-wrap"><div class="skeleton skeleton-card"></div></div></div>
+                <div class="movie-card"><div class="poster-wrap"><div class="skeleton skeleton-card"></div></div></div>
+            </div>
+            <button class="carousel-btn right" onclick="scrollCarousel('trending-track', 1)">›</button>
+        </div>
+    </section>
+
+    <!-- ═══ GENRE FILTERS ═══ -->
+    <section id="genres-section">
+        <div class="genre-filters" id="genre-filters"></div>
+    </section>
+
+    <!-- ═══ GENRE RESULTS ═══ -->
+    <section class="content-section" id="genre-results" style="display: none;">
+        <div class="section-header">
+            <h2 class="section-title" id="genre-results-title">Genre</h2>
+        </div>
+        <div class="carousel-wrapper">
+            <button class="carousel-btn left" onclick="scrollCarousel('genre-results-track', -1)">‹</button>
+            <div class="carousel-track" id="genre-results-track"></div>
+            <button class="carousel-btn right" onclick="scrollCarousel('genre-results-track', 1)">›</button>
+        </div>
+    </section>
+
+    <!-- ═══ TOP ACTION ═══ -->
+    <section class="content-section" id="action-section">
+        <div class="section-header">
+            <h2 class="section-title">💥 Top Action Movies</h2>
+        </div>
+        <div class="carousel-wrapper">
+            <button class="carousel-btn left" onclick="scrollCarousel('action-track', -1)">‹</button>
+            <div class="carousel-track" id="action-track"></div>
+            <button class="carousel-btn right" onclick="scrollCarousel('action-track', 1)">›</button>
+        </div>
+    </section>
+
+    <!-- ═══ TOP DRAMA ═══ -->
+    <section class="content-section" id="drama-section">
+        <div class="section-header">
+            <h2 class="section-title">🎭 Critically Acclaimed Dramas</h2>
+        </div>
+        <div class="carousel-wrapper">
+            <button class="carousel-btn left" onclick="scrollCarousel('drama-track', -1)">‹</button>
+            <div class="carousel-track" id="drama-track"></div>
+            <button class="carousel-btn right" onclick="scrollCarousel('drama-track', 1)">›</button>
+        </div>
+    </section>
+
+    <!-- ═══ TOP COMEDY ═══ -->
+    <section class="content-section" id="comedy-section">
+        <div class="section-header">
+            <h2 class="section-title">😂 Comedy Hits</h2>
+        </div>
+        <div class="carousel-wrapper">
+            <button class="carousel-btn left" onclick="scrollCarousel('comedy-track', -1)">‹</button>
+            <div class="carousel-track" id="comedy-track"></div>
+            <button class="carousel-btn right" onclick="scrollCarousel('comedy-track', 1)">›</button>
+        </div>
+    </section>
+
+    <!-- ═══ TOP SCI-FI ═══ -->
+    <section class="content-section" id="scifi-section">
+        <div class="section-header">
+            <h2 class="section-title">🚀 Sci-Fi & Fantasy</h2>
+        </div>
+        <div class="carousel-wrapper">
+            <button class="carousel-btn left" onclick="scrollCarousel('scifi-track', -1)">‹</button>
+            <div class="carousel-track" id="scifi-track"></div>
+            <button class="carousel-btn right" onclick="scrollCarousel('scifi-track', 1)">›</button>
+        </div>
+    </section>
+
+    <!-- ═══ MOVIE DETAIL MODAL ═══ -->
+    <div class="modal-backdrop" id="modal-backdrop" onclick="closeModal(event)">
+        <div class="modal" id="modal">
+            <button class="modal-close" onclick="closeModalForce()">✕</button>
+            <img class="modal-backdrop-img" id="modal-img" src="" alt="">
+            <div class="modal-body">
+                <h2 class="modal-title" id="modal-title"></h2>
+                <div class="modal-meta">
+                    <span class="modal-rating" id="modal-rating"></span>
+                    <span class="modal-votes" id="modal-votes"></span>
+                    <span class="modal-year" id="modal-year"></span>
+                </div>
+                <div class="modal-genres" id="modal-genres"></div>
+                <p class="modal-overview" id="modal-overview"></p>
+                <h3 class="modal-similar-heading">Similar Movies</h3>
+                <div class="carousel-track" id="modal-similar" style="padding: 8px 0;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ FOOTER ═══ -->
+    <footer>
+        <p>Built with <span class="heart">♥</span> using PySpark &amp; 20 Million Ratings | MovieLens 20M Dataset</p>
+    </footer>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>

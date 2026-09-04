@@ -1,0 +1,32 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run Kino FastAPI",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"app.py"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": [],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"detail": "Starts the Kino FastAPI application in the workspace folder."
+		},
+		{
+			"label": "Run Kino FastAPI",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"app.py"
+			],
+			"isBackground": true,
+			"problemMatcher": []
+		}
+	]
+}
