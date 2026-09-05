@@ -6,6 +6,12 @@ import os
 import re
 import difflib
 
+try:
+    import happybase
+    HAPPYBASE_AVAILABLE = True
+except ImportError:
+    HAPPYBASE_AVAILABLE = False
+
 
 app = FastAPI(title="Kino — Big Data Movie Recommendations")
 
@@ -19,6 +25,10 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 
 POSTERS_PATH = os.path.join(DATA_DIR, "movies_with_posters.csv")
 RATINGS_PATH = os.path.join(DATA_DIR, "movies_with_ratings.csv")
+
+HBASE_HOST = os.environ.get("HBASE_HOST", "localhost")
+HBASE_PORT = int(os.environ.get("HBASE_PORT", 9090))
+HBASE_TABLE = "kino_movies"
 
 movies_df = None
 
@@ -114,8 +124,79 @@ MOOD_TO_GENRE = {
 
 
 # ============================================================
-# LOAD CSV DATA
+# LOAD DATA — HBase First, CSV Fallback
 # ============================================================
+
+def load_from_hbase():
+    """
+    Connect to HBase Thrift Server and load all movie data
+    from the kino_movies table into a Pandas DataFrame.
+
+    Returns a DataFrame on success, or None on failure.
+    """
+    if not HAPPYBASE_AVAILABLE:
+        print("  happybase library not installed. Cannot connect to HBase.")
+        return None
+
+    print(f"Connecting to HBase Thrift Server at {HBASE_HOST}:{HBASE_PORT}...")
+
+    try:
+        connection = happybase.Connection(
+            host=HBASE_HOST,
+            port=HBASE_PORT,
+            timeout=120000
+        )
+        # Test the connection
+        connection.tables()
+        print(f"  Connected to HBase successfully!")
+    except Exception as e:
+        print(f"  Could not connect to HBase: {e}")
+        return None
+
+    try:
+        table_names = [t.decode("utf-8") for t in connection.tables()]
+        if HBASE_TABLE not in table_names:
+            print(f"  Table '{HBASE_TABLE}' not found in HBase.")
+            connection.close()
+            return None
+
+        table = connection.table(HBASE_TABLE)
+
+        print(f"  Scanning table '{HBASE_TABLE}' (batch_size=1000)...")
+
+        rows = []
+        for row_key, data in table.scan(batch_size=1000):
+            row = {
+                "MovieID": int(row_key),
+                "Title": data.get(b"info:title", b"").decode("utf-8"),
+                "Genres": data.get(b"info:genres", b"").decode("utf-8"),
+                "AvgRating": float(data.get(b"stats:avg_rating", b"0").decode("utf-8")),
+                "NumRatings": int(float(data.get(b"stats:num_ratings", b"0").decode("utf-8"))),
+                "WeightedRating": float(data.get(b"stats:weighted_rating", b"0").decode("utf-8")),
+                "poster_url": data.get(b"links:poster_url", b"").decode("utf-8"),
+                "backdrop_url": data.get(b"links:backdrop_url", b"").decode("utf-8"),
+                "overview": data.get(b"links:overview", b"").decode("utf-8"),
+            }
+            rows.append(row)
+
+        connection.close()
+
+        if not rows:
+            print(f"  Table '{HBASE_TABLE}' is empty.")
+            return None
+
+        df = pd.DataFrame(rows)
+        print(f"  Loaded {len(df):,} movies from HBase table '{HBASE_TABLE}'")
+        return df
+
+    except Exception as e:
+        print(f"  Error reading from HBase: {e}")
+        try:
+            connection.close()
+        except Exception:
+            pass
+        return None
+
 
 @app.on_event("startup")
 async def load_data():
@@ -126,55 +207,72 @@ async def load_data():
     print("=" * 60)
 
     # --------------------------------------------------------
-    # IMPORTANT:
-    # CSV is now the PRIMARY SOURCE OF TRUTH.
-    #
-    # HBase is intentionally NOT loaded here because an older
-    # HBase dataset could contain old/missing poster URLs and
-    # override the updated CSV.
+    # PRIORITY 1: Load from HBase (NoSQL database)
+    # PRIORITY 2: Fall back to local CSV if HBase unavailable
     # --------------------------------------------------------
 
-    try:
-        if os.path.exists(POSTERS_PATH):
+    loaded_from = None
 
-            print(f"Loading movie dataset:")
-            print(f"  {POSTERS_PATH}")
+    # --- Try HBase first ---
+    print("\n[HBase] Attempting to load from HBase NoSQL database...")
+    hbase_df = load_from_hbase()
 
-            movies_df = pd.read_csv(
-                POSTERS_PATH,
-                low_memory=False
-            )
+    if hbase_df is not None and not hbase_df.empty:
+        movies_df = hbase_df
+        loaded_from = "HBase"
+        print(f"  ✓ SUCCESS: Data loaded from HBase ({len(movies_df):,} movies)")
 
-            # Ensure The Godfather poster is available
-            # (MovieID 858)
-            godfather_mask = movies_df["MovieID"] == 858
-            if godfather_mask.any():
-                movies_df.loc[godfather_mask, "poster_url"] = (
-                    "https://image.tmdb.org/t/p/w500/3bhkrj58Vtu7enYsRolD1fZdja1.jpg"
+    else:
+        # --- Fall back to CSV ---
+        print("\n[CSV] HBase unavailable. Falling back to local CSV...")
+
+        try:
+            if os.path.exists(POSTERS_PATH):
+
+                print(f"  Loading: {POSTERS_PATH}")
+
+                movies_df = pd.read_csv(
+                    POSTERS_PATH,
+                    low_memory=False
                 )
 
-            print(f"Loaded {len(movies_df):,} movies from movies_with_posters.csv")
+                loaded_from = "CSV (movies_with_posters.csv)"
+                print(f"  Loaded {len(movies_df):,} movies from CSV")
 
-        elif os.path.exists(RATINGS_PATH):
+            elif os.path.exists(RATINGS_PATH):
 
-            print("movies_with_posters.csv not found.")
-            print("Falling back to movies_with_ratings.csv")
+                print(f"  Loading: {RATINGS_PATH}")
 
-            movies_df = pd.read_csv(
-                RATINGS_PATH,
-                low_memory=False
-            )
+                movies_df = pd.read_csv(
+                    RATINGS_PATH,
+                    low_memory=False
+                )
 
-            print(f"Loaded {len(movies_df):,} movies from ratings CSV")
+                loaded_from = "CSV (movies_with_ratings.csv)"
+                print(f"  Loaded {len(movies_df):,} movies from CSV")
 
-        else:
+            else:
 
-            print("ERROR: No movie CSV file found.")
-            print(f"Expected:")
-            print(f"  {POSTERS_PATH}")
+                print("  ERROR: No data source available!")
+                print(f"  Expected HBase table '{HBASE_TABLE}' or CSV at:")
+                print(f"    {POSTERS_PATH}")
 
+                movies_df = None
+                return
+
+        except Exception as csv_ex:
+            print(f"  ERROR loading CSV: {csv_ex}")
             movies_df = None
             return
+
+    try:
+        # Ensure The Godfather poster is available
+        # (MovieID 858)
+        godfather_mask = movies_df["MovieID"] == 858
+        if godfather_mask.any():
+            movies_df.loc[godfather_mask, "poster_url"] = (
+                "https://image.tmdb.org/t/p/w500/3bhkrj58Vtu7enYsRolD1fZdja1.jpg"
+            )
 
         # ----------------------------------------------------
         # REQUIRED COLUMNS
@@ -316,6 +414,7 @@ async def load_data():
         print()
         print("DATASET STATUS")
         print("-" * 60)
+        print(f"Data Source:              {loaded_from}")
         print(f"Total movies:             {len(movies_df):,}")
         print(f"Movies with posters:      {poster_count:,}")
         print(f"Movies without posters:   {missing_count:,}")
